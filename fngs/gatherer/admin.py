@@ -131,9 +131,28 @@ class DigestIssueAdmin(admin.ModelAdmin):
     )
 
 
+class DigestGatheringIterationAdmin(admin.ModelAdmin):
+
+    readonly_fields = (
+        'id',
+    )
+
+    list_display = (
+        'id',
+        'dt',
+        'count',
+        'source',
+    )
+
+    autocomplete_fields = (
+        'source',
+    )
+
+
 admin.site.register(DigestRecord, DigestRecordAdmin)
 admin.site.register(DigestRecordDuplicate, DigestRecordDuplicateAdmin)
 admin.site.register(Project, ProjectAdmin)
 admin.site.register(Keyword, KeywordAdmin)
 admin.site.register(DigestRecordsSource, DigestRecordsSourceAdmin)
 admin.site.register(DigestIssue, DigestIssueAdmin)
+admin.site.register(DigestGatheringIteration, DigestGatheringIterationAdmin)

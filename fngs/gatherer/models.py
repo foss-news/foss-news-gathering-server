@@ -241,3 +241,17 @@ class DigestIssue(models.Model):
 
     def __str__(self):
         return f'#{self.number} {self.habr_url}'
+
+class DigestGatheringIteration(models.Model):
+
+    dt = models.DateTimeField(verbose_name='Date&time')
+    count = models.IntegerField(verbose_name='Gathered Records Count')
+
+    source = models.ForeignKey(to='DigestRecordsSource',
+                               on_delete=models.PROTECT,
+                               blank=True,
+                               null=True)
+
+    class Meta:
+        verbose_name = 'Digest Gathering Iteration'
+        verbose_name_plural = 'Digest Gathering Iterations'

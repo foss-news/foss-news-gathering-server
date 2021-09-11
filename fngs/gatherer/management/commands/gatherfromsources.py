@@ -53,6 +53,10 @@ class Command(BaseCommand):
                                    posts_data,
                                    parsing_module.language,
                                    parsing_module.warning)
+        iteration = DigestGatheringIteration(dt=datetime.datetime.now(),
+                                             count=len(posts_data),
+                                             source=DigestRecordsSource.objects.get(name=parsing_module.source_name))
+        iteration.save()
         for post_data in posts_data_one.posts_data_list:
             logger.info(f'New post {post_data.dt if post_data.dt is not None else "?"} "{post_data.title}" {post_data.url}')
         logger.debug(f'Parsed from {parsing_module.source_name}: {[(post_data.title, post_data.url) for post_data in posts_data_one.posts_data_list]}')
