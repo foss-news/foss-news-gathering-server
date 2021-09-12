@@ -140,8 +140,12 @@ class DigestGatheringIterationAdmin(admin.ModelAdmin):
     list_display = (
         'id',
         'dt',
-        'count',
+        'gathered_count',
+        'saved_count',
         'source',
+        'source_enabled',
+        'source_error',
+        'parser_error',
     )
 
     autocomplete_fields = (

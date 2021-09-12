@@ -68,6 +68,25 @@ class FiltrationType(Enum):
     SPECIFIC = 'specific'
 
 
+class ParsingResult:
+
+    def __init__(self, posts_data, source_enabled, source_error, parser_error):
+        self.posts_data: List[PostData] or None = posts_data
+        self.source_enabled: bool = source_enabled
+        self.source_error: str or None = source_error
+        self.parser_error: str or None = parser_error
+
+    @property
+    def success(self):
+        return not(self.source_error or self.parser_error)
+
+
+class DigestSourceException(Exception):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
 class BasicParsingModule(metaclass=ABCMeta):
 
     source_name = None
@@ -77,24 +96,27 @@ class BasicParsingModule(metaclass=ABCMeta):
     filters = []
     language: Language = None
 
-    def parse(self, days_count: int) -> List[PostData]:
+    def parse(self, days_count: int) -> ParsingResult:
         if not DigestRecordsSource.objects.get(name=self.source_name).enabled:  # TODO: Check existence
             logger.warning(f'"{self.source_name}" is disabled')
-            return []
+            return ParsingResult([], False, None, None)
         try:
             posts_data: List[PostData] = self._parse()
+        except DigestSourceException as e:
+            logger.error(f'Failed to parse "{self.source_name}", source error: {str(e)}')
+            return ParsingResult([], True, str(e), None)
         except Exception as e:
-            logger.error(f'Failed to parse "{self.source_name}" source: {str(e)}')
+            logger.error(f'Failed to parse "{self.source_name}", parser error: {str(e)}')
             logger.error(traceback.format_exc())
-            return []
+            return ParsingResult([], True, None, str(e))
         try:
             filtered_posts_data: List[PostData] = self._filter_out(posts_data, days_count)
             self._fill_keywords(filtered_posts_data)
-            return filtered_posts_data
+            return ParsingResult(filtered_posts_data, True, None, None)
         except Exception as e:
             logger.error(f'Failed to filter data parsed from "{self.source_name}" source: {str(e)}')
             logger.error(traceback.format_exc())
-            return []
+            return ParsingResult([], True, None, str(e))
 
     @abstractmethod
     def _parse(self) -> List[PostData]:
@@ -197,8 +219,7 @@ class RssBasicParsingModule(BasicParsingModule):
         response = requests.get(self.rss_url,
                                 headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36'})
         if response.status_code != 200:
-            logger.error(f'"{self.source_name}" returned status code {response.status_code}')
-            return posts_data
+            raise DigestSourceException(f'"{self.source_name}" returned status code {response.status_code}')
         else:
             logger.debug(f'Successfully fetched RSS for "{self.source_name}"')
         self.rss_data_root = ET.fromstring(self._preprocess_xml(response.text))
@@ -901,6 +922,8 @@ class PingvinusRuParsingModule(BasicParsingModule):
 
     def _parse(self):
         response = requests.get(self.news_page_url)
+        if response.status_code != 200:
+            raise DigestSourceException(f'"{self.source_name}" returned status code {response.status_code}')
         tree = html.fromstring(response.content)
         titles_blocks = tree.xpath('//div[@class="newsdateblock"]//h2/a[contains(@href, "/news/")]')
         dates_blocks = tree.xpath('//div[@class="newsdateblock"]//span[@class="time"]')

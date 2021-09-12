@@ -242,15 +242,27 @@ class DigestIssue(models.Model):
     def __str__(self):
         return f'#{self.number} {self.habr_url}'
 
+
 class DigestGatheringIteration(models.Model):
 
     dt = models.DateTimeField(verbose_name='Date&time')
-    count = models.IntegerField(verbose_name='Gathered Records Count')
-
+    gathered_count = models.IntegerField(verbose_name='Gathered Records Count')
+    saved_count = models.IntegerField(verbose_name='Saved Records Count',
+                                      blank=True,
+                                      null=True)
     source = models.ForeignKey(to='DigestRecordsSource',
                                on_delete=models.PROTECT,
                                blank=True,
                                null=True)
+    source_enabled = models.BooleanField(verbose_name='Source enabled',
+                                         blank=True,
+                                         null=True)
+    source_error = models.TextField(verbose_name='Source error',
+                                    blank=True,
+                                    null=True)
+    parser_error = models.TextField(verbose_name='Parser error',
+                                    blank=True,
+                                    null=True)
 
     class Meta:
         verbose_name = 'Digest Gathering Iteration'

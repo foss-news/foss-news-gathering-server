@@ -1,4 +1,5 @@
 from django.core.management.base import BaseCommand
+
 from gatherer.models import *
 import datetime
 from enum import Enum
@@ -41,29 +42,51 @@ class Command(BaseCommand):
         parsing_modules = ParsingModuleFactory.create(parsing_modules_names)
         logger.info('Started parsing all sources')
         for parsing_module in parsing_modules:
-            posts_data_one = self._parse(parsing_module)
-            self._save_to_database(posts_data_one)
+            parsing_result = self._parse(parsing_module)
+            if parsing_result is not None:
+                iteration, posts_data_one = parsing_result
+                self._save_to_database(iteration, posts_data_one)
         logger.info(f'Finished parsing all sources, all saved to database')  # TODO: Add stats
 
     def _parse(self, parsing_module):
         logger.info(f'Started parsing {parsing_module.source_name}')
-        posts_data = parsing_module.parse(days_count)
-        posts_data_one = PostsData(parsing_module.source_name,
-                                   parsing_module.projects,
-                                   posts_data,
-                                   parsing_module.language,
-                                   parsing_module.warning)
-        iteration = DigestGatheringIteration(dt=datetime.datetime.now(),
-                                             count=len(posts_data),
-                                             source=DigestRecordsSource.objects.get(name=parsing_module.source_name))
-        iteration.save()
-        for post_data in posts_data_one.posts_data_list:
-            logger.info(f'New post {post_data.dt if post_data.dt is not None else "?"} "{post_data.title}" {post_data.url}')
-        logger.debug(f'Parsed from {parsing_module.source_name}: {[(post_data.title, post_data.url) for post_data in posts_data_one.posts_data_list]}')
-        logger.info(f'Finished parsing {parsing_module.source_name}, got {len(posts_data_one.posts_data_list)} post(s)')
-        return posts_data_one
+        parsing_result = parsing_module.parse(days_count)
+        source = DigestRecordsSource.objects.get(name=parsing_module.source_name)
+        datetime_now = datetime.datetime.now(tz=dateutil.tz.tzlocal())
+        if parsing_result.success:
+            posts_data_one = PostsData(parsing_module.source_name,
+                                       parsing_module.projects,
+                                       parsing_result.posts_data,
+                                       parsing_module.language,
+                                       parsing_module.warning)
+            iteration = DigestGatheringIteration(dt=datetime_now,
+                                                 source_enabled=True,
+                                                 gathered_count=len(parsing_result.posts_data),
+                                                 source=source)
+            iteration.save()
+            for post_data in posts_data_one.posts_data_list:
+                logger.info(f'New post {post_data.dt if post_data.dt is not None else "?"} "{post_data.title}" {post_data.url}')
+            logger.debug(f'Parsed from {parsing_module.source_name}: {[(post_data.title, post_data.url) for post_data in posts_data_one.posts_data_list]}')
+            logger.info(f'Finished parsing {parsing_module.source_name}, got {len(posts_data_one.posts_data_list)} post(s)')
+            return iteration, posts_data_one
+        elif not parsing_result.source_enabled:
+            iteration = DigestGatheringIteration(dt=datetime_now,
+                                                 source_enabled=False,
+                                                 gathered_count=0,
+                                                 source=source)
+            iteration.save()
+            return None
+        else:
+            iteration = DigestGatheringIteration(dt=datetime_now,
+                                                 source_enabled=True,
+                                                 gathered_count=len(parsing_result.posts_data),
+                                                 source=source,
+                                                 source_error=parsing_result.source_error,
+                                                 parser_error=parsing_result.parser_error)
+            iteration.save()
+            return None
 
-    def _save_to_database(self, posts_data_one: PostsData):
+    def _save_to_database(self, iteration: DigestGatheringIteration, posts_data_one: PostsData):
         logger.info(f'Saving to database for source "{posts_data_one.source_name}"')
         source = DigestRecordsSource.objects.get(name=posts_data_one.source_name)
         added_digest_records_count = 0
@@ -110,6 +133,8 @@ class Command(BaseCommand):
                 digest_record.save()
                 added_digest_records_count += 1
                 logger.debug(f'Added {short_post_data_str} to database')
+        iteration.saved_count = added_digest_records_count
+        iteration.save()
         logger.info(f'Finished saving to database for source "{posts_data_one.source_name}", added {added_digest_records_count} digest record(s), {already_existing_digest_records_count} already existed, dates filled for {already_existing_digest_records_dt_updated_count} existing record(s)')
 
     def _init_globals(self, **options):
